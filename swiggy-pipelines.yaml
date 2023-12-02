@@ -1,1 +1,75 @@
+pipeline {
+    agent any
+        tools {
+            git 'Default'
+            jdk 'java17'
+            maven 'maven3'
+            nodejs 'nodejs'
+            }
+        environment{
+        SCANNER_HOME=tool "sonar-scanner"
+        }
+    stages {
+        stage('Clean workspace') {
+            steps {
+                cleanWs()
+            }
+        }
+        stage('SCM checkout') {
+            steps {
+                git branch: 'praveen', url: 'https://github.com/praveenakumara/swiggy.git'
+            }
+        }
+        stage('NPM install') {
+            steps {
+                sh "npm install"
+            }
+        }
+        stage('Trivy Code scan') {
+            steps {
+                sh "trivy fs --security-checks vuln,config ."
+            }
+        }
+        stage('Sonarqube Analysis') {
+            steps {
+                withSonarQubeEnv("sonar") {
+                sh '''$SCANNER_HOME/bin/sonar-scanner -Dsonar.projectKey=swiggy -Dsonar.projectName='swiggy' -Dsonar.java.binaries=. \
+                    -Dsonar.projectKey=swiggy'''}
+            }
+        }
+        stage('Docker build') {
+            steps {
+                script{
+                    sh " docker build -t swiggy ."
+                }
+            }
+        }
+        stage('Docker Image Scan ') {
+            steps {
+                script{
+                    sh "trivy image --scanners vuln praveenakumara/swiggy:latest"
+                }
+            }
+        }
+        stage('Docker tag/push') {
+            steps {
+                script{
+                    withCredentials([string(credentialsId: 'docker_cred', variable: 'docker_cred')]) {
+                        sh "docker tag swiggy:latest praveenakumara/swiggy:latest"
+                        sh "docker login -u praveenakumara -p ${docker_cred}"
+                        sh "docker push praveenakumara/swiggy:latest"
+                    }
+                }
+            }
+        }
+        stage('Docker Deploy') {
+            steps {
+                script{
+                    sh " docker run -d --name swiggy-${BUILD_NUMBER} -p 3000:3000 praveenakumara/swiggy:latest"
+                }
+            }
+        }
+    }
+}
 
+docker images is good you can use it for practice
